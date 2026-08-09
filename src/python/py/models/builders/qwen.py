@@ -3404,15 +3404,15 @@ class Qwen35MtpHead(Qwen35MoeTextModel):
         # are byte-identical after quantization and can be deduplicated on disk
         # (see _share_mtp_embedding_lm_head).
         if lm_head_weight_scale_2 is not None:
-            from onnxruntime_genai.models.quantized_model import _modelopt_dequant_nvfp4
+            from onnxruntime_genai.models.quantized_model import ModeloptModel
 
             if lm_head_weight_scale is None:
                 raise ValueError(
                     "Found 'lm_head.weight_scale_2' but not 'lm_head.weight_scale'; "
                     "cannot dequantize the NVFP4 MTP head LM head."
                 )
-            lm_head_weight = _modelopt_dequant_nvfp4(
-                lm_head_weight, lm_head_weight_scale, lm_head_weight_scale_2
+            lm_head_weight = ModeloptModel._dequant_nvfp4(
+                lm_head_weight, lm_head_weight_scale, lm_head_weight_scale_2, name="lm_head.weight"
             )
 
         self._embed_weight = embed_weight
