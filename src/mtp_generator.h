@@ -166,9 +166,8 @@ struct MtpGenerator {
   // makes the per-step recurrent SnapshotState unnecessary. Read once at construction.
   bool direct_arena_commit_{false};
   // ORT_MTP_PREFILL_CHUNK: max tokens per prompt forward. A one-shot forward over a long prompt
-  // drives the ORT activation arena far past what the chunked path needs (measured 94 GB vs 54 GB
-  // on a 2.8k-token prompt), so 0 = single forward; defaults to 256 on a windowed-state model,
-  // off otherwise.
+  // grows the ORT activation arena, so 0 = single forward; defaults to 1024 on a windowed-state
+  // model and stays off otherwise.
   int prefill_chunk_{0};
   bool prefill_chunk_explicit_{false};
   // Head KV length invariant (multi-token path): number of committed generated tokens currently

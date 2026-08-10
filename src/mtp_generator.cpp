@@ -121,9 +121,9 @@ MtpGenerator::MtpGenerator(const Model& main_model, const Model& mtp_model, cons
   // hot path (and uses it to decide whether the recurrent snapshot is needed at all).
   direct_arena_commit_ = std::getenv("ORT_MTP_DIRECT_ARENA_COMMIT") != nullptr;
   // Chunked prefill. The windowed recurrent state is a fixed [B, W, ...] buffer, so it no longer
-  // scales with the prompt, but a single-shot forward over a long prompt still blows up the ORT
-  // activation arena (measured: 54 GB chunked vs 94 GB unchunked on a 2.8k-token prompt). Feed
-  // the prompt in chunks so peak memory stays bounded; only the last chunk's outputs are consumed.
+  // scales with the prompt, but a single-shot forward over a long prompt still grows the ORT
+  // activation arena. Feed the prompt in chunks so peak memory stays bounded; only the last
+  // chunk's outputs are consumed.
   if (const char* env = std::getenv("ORT_MTP_PREFILL_CHUNK")) {
     prefill_chunk_ = std::atoi(env);
     if (prefill_chunk_ < 0) prefill_chunk_ = 0;
@@ -144,8 +144,9 @@ MtpGenerator::MtpGenerator(const Model& main_model, const Model& mtp_model, cons
 
   main_ = CreateGenerator(main_model_, *main_params_);
   // Default the chunking on for windowed-state models only (they are the ones running long
-  // prompts through the MTP loop); 256 tokens/chunk costs a handful of extra forwards.
-  if (!prefill_chunk_explicit_ && main_->CanCropRecurrentState()) prefill_chunk_ = 256;
+  // prompts through the MTP loop). A 1024-token chunk keeps activation memory bounded without
+  // splitting common 1K prompts into several underfilled forwards.
+  if (!prefill_chunk_explicit_ && main_->CanCropRecurrentState()) prefill_chunk_ = 1024;
   mtp_params_ = std::make_shared<GeneratorParams>(mtp_model_);
   mtp_params_->search = params.search;
   // CUDA-graph capture on the MTP head: the head is a single standard-attention layer (KV
@@ -606,7 +607,7 @@ void MtpGenerator::AppendTokens(cpu_span<const int32_t> input_ids) {
     throw std::runtime_error("MtpGenerator: AppendTokens can only be called once");
 
   // Chunked prefill: bounds the ORT activation arena of the prompt forward (see the constructor).
-  // Off (single forward) when ORT_MTP_PREFILL_CHUNK is 0/unset or the prompt fits in one chunk.
+  // Off (single forward) when ORT_MTP_PREFILL_CHUNK is explicitly 0 or the prompt fits in one chunk.
   const size_t total = input_ids.size();
   size_t tail = total;
   if (prefill_chunk_ > 0 && total > static_cast<size_t>(prefill_chunk_)) {
